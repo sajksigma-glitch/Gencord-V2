@@ -1,0 +1,22 @@
+{
+  "name": "gencord",
+  "version": "1.0.0",
+  "description": "Prosty klon Discorda: czat kanałowy w czasie rzeczywistym (Node + Express + Socket.IO).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "chat",
+    "discord-clone",
+    "socket.io",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.1"
+  }
+}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gencord – prosty Discord</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <!-- Socket.IO client z CDN (bez integrity, żeby uniknąć błędów jeśli hash się zmieni) -->
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <span class="logo">G</span>
+          <span class="title">Gencord</span>
+        </div>
+        <div class="section-title">Kanały tekstowe</div>
+        <ul id="channel-list" class="channel-list"></ul>
+        <div class="private-channel-box">
+          <button id="private-channel-btn" class="private-channel-btn">
+            Wejdź do kanału prywatnego
+          </button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="main-header">
+          <div class="channel-name" id="current-channel-name">Wybierz kanał</div>
+          <div class="header-right">
+            <button id="voice-toggle-btn" class="voice-btn">Połącz głosowo</button>
+            <div class="user-info">
+              <span id="current-username"></span>
+            </div>
+          </div>
+        </header>
+
+        <section class="messages" id="messages"></section>
+
+        <form id="message-form" class="message-form">
+          <input
+            id="message-input"
+            type="text"
+            autocomplete="off"
+            placeholder="Napisz wiadomość..."
+          />
+          <button type="submit">Wyślij</button>
+        </form>
+      </main>
+
+      <div id="username-modal" class="modal-backdrop">
+        <div class="modal">
+          <h2>Witaj w Gencordzie</h2>
+          <p>Podaj swoją nazwę użytkownika:</p>
+          <input id="username-input" type="text" placeholder="np. Arek" />
+          <button id="username-save">Wejdź</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+
