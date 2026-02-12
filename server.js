@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -32,6 +33,9 @@ const channels = [
 // Pokoje tworzone przez użytkowników: code -> { code, channelId, createdAt }
 let rooms = {};
 
+// Prości użytkownicy: key (lowercase nazwy) -> { username, passwordHash, createdAt }
+let users = {};
+
 // Mapowanie: channelId -> lista wiadomości
 let messagesByChannel = {
   general: [],
@@ -44,6 +48,10 @@ let messagesByChannel = {
 // wiadomości i pokoje zostaną zachowane między restartami.
 const DATA_PATH = path.join(__dirname, 'data.json');
 
+function hashPassword(password) {
+  return crypto.createHash('sha256').update(String(password)).digest('hex');
+}
+
 function loadState() {
   try {
     if (fs.existsSync(DATA_PATH)) {
@@ -54,6 +62,9 @@ function loadState() {
       }
       if (parsed.rooms && typeof parsed.rooms === 'object') {
         rooms = parsed.rooms;
+      }
+      if (parsed.users && typeof parsed.users === 'object') {
+        users = parsed.users;
       }
     }
   } catch (err) {
@@ -66,7 +77,8 @@ function saveState() {
     const payload = JSON.stringify(
       {
         messagesByChannel,
-        rooms
+        rooms,
+        users
       },
       null,
       2
@@ -79,9 +91,44 @@ function saveState() {
 
 loadState();
 
+// Prosty endpoint resetu (opcjonalny, teraz użyty przez Ciebie raz – przez usunięcie pliku)
+// app.post('/api/admin/reset', (req, res) => { ... })
+
 // REST API – lista kanałów
 app.get('/api/channels', (req, res) => {
   res.json(channels);
+});
+
+// REST API – rejestracja / logowanie użytkownika (proste, bez tokenów)
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body || {};
+  const name = String(username || '').trim();
+  const pass = String(password || '').trim();
+
+  if (!name || !pass) {
+    return res.status(400).json({ error: 'Nazwa użytkownika i hasło są wymagane.' });
+  }
+
+  const key = name.toLowerCase();
+  const passHash = hashPassword(pass);
+
+  const existing = users[key];
+  if (!existing) {
+    // tworzymy nowe konto
+    users[key] = {
+      username: name,
+      passwordHash: passHash,
+      createdAt: new Date().toISOString()
+    };
+    saveState();
+    return res.json({ username: name, created: true });
+  }
+
+  if (existing.passwordHash !== passHash) {
+    return res.status(401).json({ error: 'Nieprawidłowe hasło.' });
+  }
+
+  return res.json({ username: existing.username, created: false });
 });
 
 // REST API – lista pokoi (do odtworzenia listy po odświeżeniu)

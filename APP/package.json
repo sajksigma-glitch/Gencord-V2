@@ -1,0 +1,16 @@
+{
+  "name": "gencord-desktop",
+  "version": "1.0.0",
+  "description": "Desktopowa wersja Gencorda w Electronie.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^40.4.0",
+    "electron-builder": "^26.7.0"
+  }
+}

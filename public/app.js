@@ -24,6 +24,7 @@ const messageInputEl = document.getElementById('message-input');
 
 const usernameModalEl = document.getElementById('username-modal');
 const usernameInputEl = document.getElementById('username-input');
+const passwordInputEl = document.getElementById('password-input');
 const usernameSaveBtn = document.getElementById('username-save');
 const createRoomBtn = document.getElementById('create-room-btn');
 const joinRoomBtn = document.getElementById('join-room-btn');
@@ -416,11 +417,33 @@ function hideUsernameModal() {
   usernameModalEl.style.display = 'none';
 }
 
-function setUsername(newName) {
-  username = newName.trim() || null;
-  if (username) {
+async function loginOrRegister() {
+  const name = usernameInputEl.value.trim();
+  const pass = passwordInputEl.value.trim();
+
+  if (!name || !pass) {
+    alert('Podaj nazwę użytkownika i hasło.');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ username: name, password: pass })
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Nie udało się zalogować.');
+      return;
+    }
+
+    const data = await res.json();
+    username = data.username;
     currentUsernameEl.textContent = username;
-    // zapisz nazwę w localStorage, żeby po odświeżeniu nie pytało ponownie
     localStorage.setItem('gencord:username', username);
     hideUsernameModal();
 
@@ -435,20 +458,32 @@ function setUsername(newName) {
       const channelName = nameSpan
         ? nameSpan.textContent
         : activeChannel.textContent.trim().replace(/^#\s*/, '');
-      selectChannel(channelId, channelName);
+      const code = activeChannel.dataset.roomCode || null;
+      selectChannel(channelId, channelName, code);
     }
+  } catch (err) {
+    console.error('Błąd logowania:', err);
+    alert('Wystąpił błąd podczas logowania.');
   }
 }
 
 usernameSaveBtn.addEventListener('click', () => {
-  setUsername(usernameInputEl.value);
+  loginOrRegister();
 });
 
 usernameInputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
-    setUsername(usernameInputEl.value);
+    loginOrRegister();
   }
 });
+
+if (passwordInputEl) {
+  passwordInputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      loginOrRegister();
+    }
+  });
+}
 
 messageFormEl.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -526,23 +561,9 @@ socket.on('voice:user-left', (id) => {
 });
 
 window.addEventListener('load', () => {
-  const storedName = localStorage.getItem('gencord:username');
-  if (storedName) {
-    username = storedName;
-    currentUsernameEl.textContent = username;
-    hideUsernameModal();
-  } else {
-    showUsernameModal();
-  }
-
+  // po skasowaniu danych zaczynamy "na czysto" – wymagamy logowania
+  showUsernameModal();
   loadChannels();
-});
-
-usernameInputEl.addEventListener('change', () => {
-  const value = usernameInputEl.value.trim();
-  if (value) {
-    localStorage.setItem('gencord:username', value);
-  }
 });
 
 if (voiceToggleBtn) {
