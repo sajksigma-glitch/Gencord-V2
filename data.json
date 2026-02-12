@@ -1,0 +1,24 @@
+{
+  "messagesByChannel": {
+    "general": [],
+    "games": [],
+    "music": [],
+    "room-1CH4XG": [
+      {
+        "id": "1770913578827346a5433028f",
+        "type": "user",
+        "channelId": "room-1CH4XG",
+        "username": "Sajk",
+        "content": "hej",
+        "timestamp": "2026-02-12T16:26:18.827Z"
+      }
+    ]
+  },
+  "rooms": {
+    "1CH4XG": {
+      "code": "1CH4XG",
+      "channelId": "room-1CH4XG",
+      "createdAt": "2026-02-12T16:25:45.983Z"
+    }
+  }
+}

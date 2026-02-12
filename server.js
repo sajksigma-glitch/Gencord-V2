@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,43 +22,150 @@ app.use(express.json());
 const publicPath = path.join(__dirname, 'public');
 app.use(express.static(publicPath));
 
-// Proste dane w pamięci (bez bazy danych)
+// Proste dane w pamięci – publiczne kanały tekstowe
 const channels = [
   { id: 'general', name: 'general' },
   { id: 'games', name: 'games' },
   { id: 'music', name: 'music' }
 ];
 
-// Jeden kanał prywatny, NIE pokazujemy go na liście /api/channels
-const PRIVATE_CHANNEL = { id: 'private-999', name: 'sekretny' };
-const PRIVATE_PASSWORD = '99900';
+// Pokoje tworzone przez użytkowników: code -> { code, channelId, createdAt }
+let rooms = {};
 
 // Mapowanie: channelId -> lista wiadomości
-const messagesByChannel = {
+let messagesByChannel = {
   general: [],
   games: [],
-  music: [],
-  [PRIVATE_CHANNEL.id]: []
+  music: []
 };
+
+// Prosta "pamięć trwała" w pliku (lokalnie). Na darmowym Renderze
+// może być czyszczona przy redeployu, ale na Twoim komputerze
+// wiadomości i pokoje zostaną zachowane między restartami.
+const DATA_PATH = path.join(__dirname, 'data.json');
+
+function loadState() {
+  try {
+    if (fs.existsSync(DATA_PATH)) {
+      const raw = fs.readFileSync(DATA_PATH, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed.messagesByChannel && typeof parsed.messagesByChannel === 'object') {
+        messagesByChannel = { ...messagesByChannel, ...parsed.messagesByChannel };
+      }
+      if (parsed.rooms && typeof parsed.rooms === 'object') {
+        rooms = parsed.rooms;
+      }
+    }
+  } catch (err) {
+    console.error('Nie udało się wczytać stanu z pliku:', err);
+  }
+}
+
+function saveState() {
+  try {
+    const payload = JSON.stringify(
+      {
+        messagesByChannel,
+        rooms
+      },
+      null,
+      2
+    );
+    fs.writeFileSync(DATA_PATH, payload, 'utf8');
+  } catch (err) {
+    console.error('Nie udało się zapisać stanu do pliku:', err);
+  }
+}
+
+loadState();
 
 // REST API – lista kanałów
 app.get('/api/channels', (req, res) => {
   res.json(channels);
 });
 
-// REST API – dołączenie do kanału prywatnego po haśle
-app.post('/api/private/join', (req, res) => {
-  const { password } = req.body || {};
-  const normalized = String(password ?? '').trim();
+// REST API – lista pokoi (do odtworzenia listy po odświeżeniu)
+app.get('/api/rooms', (req, res) => {
+  const list = Object.values(rooms).map((room) => ({
+    code: room.code,
+    channelId: room.channelId,
+    name: `Pokój ${room.code}`
+  }));
+  res.json(list);
+});
 
-  if (normalized !== PRIVATE_PASSWORD) {
-    return res.status(403).json({ error: 'Nieprawidłowe hasło' });
+// REST API – usunięcie kanału/pokoju (tylko dynamiczne pokoje)
+app.delete('/api/channels/:id', (req, res) => {
+  const { id } = req.params;
+
+  // Nie pozwalamy usuwać domyślnych kanałów
+  const isDefault = channels.some((c) => c.id === id);
+  if (isDefault) {
+    return res.status(400).json({ error: 'Nie można usunąć domyślnego kanału.' });
   }
 
-  // Zwracamy minimum informacji o kanale, dopiero po poprawnym haśle
+  // Znajdź pokój po channelId
+  const roomEntry = Object.entries(rooms).find(([, room]) => room.channelId === id);
+  if (roomEntry) {
+    const [code] = roomEntry;
+    delete rooms[code];
+  }
+
+  if (messagesByChannel[id]) {
+    delete messagesByChannel[id];
+  }
+
+  saveState();
+
+  res.json({ ok: true });
+});
+
+// REST API – tworzenie pokoju (zwraca kod i id kanału)
+app.post('/api/rooms', (req, res) => {
+  // prosty 6‑znakowy kod
+  let code;
+  do {
+    code = Math.random().toString(36).slice(2, 8).toUpperCase();
+  } while (rooms[code]);
+
+  const channelId = `room-${code}`;
+  rooms[code] = {
+    code,
+    channelId,
+    createdAt: new Date().toISOString()
+  };
+
+  if (!messagesByChannel[channelId]) {
+    messagesByChannel[channelId] = [];
+  }
+
+  saveState();
+
   res.json({
-    id: PRIVATE_CHANNEL.id,
-    name: PRIVATE_CHANNEL.name
+    code,
+    channelId,
+    name: `Pokój ${code}`
+  });
+});
+
+// REST API – dołączenie do istniejącego pokoju po kodzie
+app.post('/api/rooms/join', (req, res) => {
+  const { code } = req.body || {};
+  const normalized = String(code || '').trim().toUpperCase();
+
+  const room = rooms[normalized];
+  if (!room) {
+    return res.status(404).json({ error: 'Taki pokój nie istnieje' });
+  }
+
+  if (!messagesByChannel[room.channelId]) {
+    messagesByChannel[room.channelId] = [];
+  }
+
+  res.json({
+    code: room.code,
+    channelId: room.channelId,
+    name: `Pokój ${room.code}`
   });
 });
 
@@ -110,6 +218,8 @@ io.on('connection', (socket) => {
     if (messagesByChannel[channelId].length > 100) {
       messagesByChannel[channelId].shift();
     }
+
+    saveState();
 
     io.to(channelId).emit('message:new', message);
   });

@@ -12,6 +12,7 @@ if (window.location.protocol === 'file:') {
 const socket = io();
 
 let currentChannelId = null;
+let currentRoomCode = null;
 let username = null;
 
 const channelListEl = document.getElementById('channel-list');
@@ -24,8 +25,11 @@ const messageInputEl = document.getElementById('message-input');
 const usernameModalEl = document.getElementById('username-modal');
 const usernameInputEl = document.getElementById('username-input');
 const usernameSaveBtn = document.getElementById('username-save');
-const privateChannelBtn = document.getElementById('private-channel-btn');
+const createRoomBtn = document.getElementById('create-room-btn');
+const joinRoomBtn = document.getElementById('join-room-btn');
 const voiceToggleBtn = document.getElementById('voice-toggle-btn');
+const roomCodeBadgeEl = document.getElementById('room-code-badge');
+const deleteChannelBtn = document.getElementById('delete-channel-btn');
 
 // WebRTC – rozmowy głosowe
 let isVoiceActive = false;
@@ -35,22 +39,33 @@ const rtcConfig = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
 };
 
+function ensureChannelItem(channelId, name, roomCode) {
+  let li = document.querySelector(`.channel-item[data-channel-id="${channelId}"]`);
+  if (!li) {
+    li = document.createElement('li');
+    li.className = 'channel-item';
+    li.dataset.channelId = channelId;
+    channelListEl.appendChild(li);
+  }
+
+  li.dataset.roomCode = roomCode || '';
+  li.innerHTML = `
+      <span class="channel-hash">#</span>
+      <span>${name}</span>
+    `;
+
+  li.onclick = () => {
+    const code = li.dataset.roomCode || null;
+    selectChannel(channelId, name, code);
+  };
+
+  return li;
+}
+
 function renderChannels(channels) {
   channelListEl.innerHTML = '';
   channels.forEach((channel) => {
-    const li = document.createElement('li');
-    li.className = 'channel-item';
-    li.dataset.channelId = channel.id;
-    li.innerHTML = `
-      <span class="channel-hash">#</span>
-      <span>${channel.name}</span>
-    `;
-
-    li.addEventListener('click', () => {
-      selectChannel(channel.id, channel.name);
-    });
-
-    channelListEl.appendChild(li);
+    ensureChannelItem(channel.id, channel.name, null);
   });
 }
 
@@ -126,8 +141,21 @@ async function loadChannels() {
     const channels = await res.json();
     renderChannels(channels);
 
+    // dociągnij również pokoje zapisane na serwerze
+    try {
+      const roomsRes = await fetch('/api/rooms');
+      if (roomsRes.ok) {
+        const rooms = await roomsRes.json();
+        rooms.forEach((room) => {
+          ensureChannelItem(room.channelId, room.name, room.code);
+        });
+      }
+    } catch (e) {
+      console.error('Błąd pobierania pokoi:', e);
+    }
+
     if (channels.length > 0) {
-      selectChannel(channels[0].id, channels[0].name);
+      selectChannel(channels[0].id, channels[0].name, null);
     }
   } catch (err) {
     console.error('Błąd pobierania kanałów:', err);
@@ -163,7 +191,17 @@ function highlightActiveChannel(channelId) {
   });
 }
 
-function selectChannel(channelId, channelName) {
+function updateRoomBadge(code) {
+  currentRoomCode = code || null;
+  if (!roomCodeBadgeEl) return;
+  if (currentRoomCode) {
+    roomCodeBadgeEl.textContent = `Kod pokoju: ${currentRoomCode}`;
+  } else {
+    roomCodeBadgeEl.textContent = '';
+  }
+}
+
+function selectChannel(channelId, channelName, roomCode) {
   if (!username) {
     showUsernameModal();
     return;
@@ -174,10 +212,11 @@ function selectChannel(channelId, channelName) {
     stopVoice();
   }
 
-  if (currentChannelId === channelId) return;
+  if (currentChannelId === channelId && currentRoomCode === roomCode) return;
   currentChannelId = channelId;
 
   currentChannelNameEl.textContent = channelName;
+  updateRoomBadge(roomCode);
   highlightActiveChannel(channelId);
 
   socket.emit('channel:join', { channelId, username });
@@ -296,51 +335,75 @@ function createPeerConnection(peerId, isInitiator) {
 }
 
 async function joinPrivateChannel() {
+  // funkcja nieużywana – zostawiona tylko dla zgodności
+}
+
+async function createRoom() {
   if (!username) {
     showUsernameModal();
     return;
   }
 
-  const password = prompt('Podaj hasło do kanału prywatnego:');
-  if (!password) return;
+  try {
+    const res = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!res.ok) {
+      alert('Nie udało się stworzyć pokoju.');
+      return;
+    }
+
+    const room = await res.json();
+
+    // dodaj pokój do listy kanałów dla tego klienta
+    ensureChannelItem(room.channelId, room.name, room.code);
+
+    // automatycznie wejdź do pokoju
+    selectChannel(room.channelId, room.name, room.code);
+    alert(`Pokój utworzony. Kod pokoju: ${room.code}`);
+  } catch (err) {
+    console.error('Błąd tworzenia pokoju:', err);
+    alert('Wystąpił błąd przy tworzeniu pokoju.');
+  }
+}
+
+async function joinRoom() {
+  if (!username) {
+    showUsernameModal();
+    return;
+  }
+
+  const code = prompt('Podaj kod pokoju:');
+  if (!code) return;
 
   try {
-    const res = await fetch('/api/private/join', {
+    const res = await fetch('/api/rooms/join', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ password })
+      body: JSON.stringify({ code })
     });
 
     if (!res.ok) {
-      alert('Nieprawidłowe hasło do kanału prywatnego.');
+      alert('Taki pokój nie istnieje lub kod jest błędny.');
       return;
     }
 
-    const channel = await res.json();
+    const room = await res.json();
 
-    // Sprawdź, czy już jest w liście kanałów
-    let item = document.querySelector(`.channel-item[data-channel-id="${channel.id}"]`);
-    if (!item) {
-      item = document.createElement('li');
-      item.className = 'channel-item';
-      item.dataset.channelId = channel.id;
-      item.innerHTML = `
-        <span class="channel-hash">#</span>
-        <span>${channel.name}</span>
-      `;
-      item.addEventListener('click', () => {
-        selectChannel(channel.id, channel.name);
-      });
-      channelListEl.appendChild(item);
-    }
+    // dodaj pokój do listy kanałów dla tego klienta
+    ensureChannelItem(room.channelId, room.name, room.code);
 
-    // Przełącz od razu na kanał prywatny
-    selectChannel(channel.id, channel.name);
+    // automatycznie przełącz na pokój
+    selectChannel(room.channelId, room.name, room.code);
   } catch (err) {
-    console.error('Błąd dołączania do kanału prywatnego:', err);
-    alert('Wystąpił błąd przy dołączaniu do kanału prywatnego.');
+    console.error('Błąd dołączania do pokoju:', err);
+    alert('Wystąpił błąd przy dołączaniu do pokoju.');
   }
 }
 
@@ -482,16 +545,69 @@ usernameInputEl.addEventListener('change', () => {
   }
 });
 
-if (privateChannelBtn) {
-  privateChannelBtn.addEventListener('click', joinPrivateChannel);
-}
-
 if (voiceToggleBtn) {
   voiceToggleBtn.addEventListener('click', () => {
     if (!isVoiceActive) {
       startVoice();
     } else {
       stopVoice();
+    }
+  });
+}
+
+if (createRoomBtn) {
+  createRoomBtn.addEventListener('click', createRoom);
+}
+
+if (joinRoomBtn) {
+  joinRoomBtn.addEventListener('click', joinRoom);
+}
+
+if (deleteChannelBtn) {
+  deleteChannelBtn.addEventListener('click', async () => {
+    if (!currentChannelId) return;
+
+    // nie pozwalamy usuwać domyślnych kanałów (bez currentRoomCode)
+    if (!currentRoomCode) {
+      alert('Tego kanału nie można usunąć. Usuń tylko własny pokój.');
+      return;
+    }
+
+    const text = prompt('Aby usunąć kanał, wpisz dokładnie: usun');
+    if (!text || text.trim().toLowerCase() !== 'usun') {
+      alert('Kanał NIE został usunięty.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/channels/${encodeURIComponent(currentChannelId)}`, {
+        method: 'DELETE'
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Nie udało się usunąć kanału.');
+        return;
+      }
+
+      // usuń kanał z listy w UI
+      const item = document.querySelector(`.channel-item[data-channel-id="${currentChannelId}"]`);
+      if (item && item.parentNode) {
+        item.parentNode.removeChild(item);
+      }
+
+      // wyczyść widok
+      stopVoice();
+      clearMessages();
+      currentChannelId = null;
+      updateRoomBadge(null);
+      currentChannelNameEl.textContent = 'Wybierz kanał';
+      highlightActiveChannel('');
+
+      alert('Kanał został usunięty.');
+    } catch (err) {
+      console.error('Błąd usuwania kanału:', err);
+      alert('Wystąpił błąd podczas usuwania kanału.');
     }
   });
 }

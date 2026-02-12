@@ -2,7 +2,7 @@
 <html lang="pl">
   <head>
     <meta charset="UTF-8" />
-    <title>Gencord – prosty Discord</title>
+    <title>Gencord</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="style.css" />
     <!-- Socket.IO client z CDN (bez integrity, żeby uniknąć błędów jeśli hash się zmieni) -->
@@ -17,9 +17,10 @@
         </div>
         <div class="section-title">Kanały tekstowe</div>
         <ul id="channel-list" class="channel-list"></ul>
-        <div class="private-channel-box">
-          <button id="private-channel-btn" class="private-channel-btn">
-            Wejdź do kanału prywatnego
+        <div class="room-actions-box">
+          <button id="create-room-btn" class="room-btn">Stwórz pokój</button>
+          <button id="join-room-btn" class="room-btn room-btn-secondary">
+            Dołącz do pokoju
           </button>
         </div>
       </aside>
@@ -28,6 +29,10 @@
         <header class="main-header">
           <div class="channel-name" id="current-channel-name">Wybierz kanał</div>
           <div class="header-right">
+            <span id="room-code-badge" class="room-code-badge"></span>
+            <button id="delete-channel-btn" class="voice-btn voice-btn-danger">
+              Usuń kanał
+            </button>
             <button id="voice-toggle-btn" class="voice-btn">Połącz głosowo</button>
             <div class="user-info">
               <span id="current-username"></span>
